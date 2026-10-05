@@ -15,7 +15,8 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "commander": "^14.0.2"
+    "commander": "^14.0.2",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

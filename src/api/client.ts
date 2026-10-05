@@ -59,9 +59,16 @@ export async function resolveCredentials(apiKeyOverride?: string): Promise<Resol
     }
   }
 
-  // 3. Active account OAuth tokens.
+  // 3. Active account OAuth tokens (+ project binding from the active profile).
   if (account !== null && (await readAuth(account)) !== null) {
-    const projectId = process.env.SOLTI_PROJECT_ID;
+    const active = await readActive();
+    const profileName = process.env.SOLTI_PROFILE ?? active.active_profile;
+    let profileProjectId: string | undefined;
+    if (profileName !== null && profileName !== undefined) {
+      const config = await readProfile(account, profileName);
+      profileProjectId = config?.project_id;
+    }
+    const projectId = process.env.SOLTI_PROJECT_ID ?? profileProjectId;
     return { credentials: { kind: "oauth", account, projectId } };
   }
 
