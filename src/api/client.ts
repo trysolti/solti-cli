@@ -71,8 +71,10 @@ export async function resolveCredentials(apiKeyOverride?: string): Promise<Resol
 export function projectBaseUrl(credentials: Credentials, apiUrlOverride?: string | null): string | null {
   const projectId = credentials.projectId;
   if (projectId === undefined || projectId === "") return null;
-  if (apiUrlOverride !== undefined && apiUrlOverride !== null && apiUrlOverride !== "") {
-    return `${apiUrlOverride.replace(/\/$/, "")}/1`;
+  // Precedence: explicit profile override > SOLTI_API_URL env var > default domain.
+  const override = apiUrlOverride ?? process.env.SOLTI_API_URL;
+  if (override !== undefined && override !== null && override !== "") {
+    return `${override.replace(/\/$/, "")}/1`;
   }
   return `https://${projectId}.api.solti.run/1`;
 }
