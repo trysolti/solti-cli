@@ -286,7 +286,10 @@ export async function ensureFreshAccessToken(email: string): Promise<string> {
 
   const expiresAt = Date.parse(auth.expires_at);
   const refreshThreshold = Date.now() + 5 * 60 * 1000;
-  if (Number.isFinite(expiresAt) && expiresAt > refreshThreshold) {
+  // An opaque access token is useless against resource-scoped API endpoints —
+  // treat it as stale and refresh into a JWT.
+  const isJwt = auth.access_token.split(".").length === 3;
+  if (Number.isFinite(expiresAt) && expiresAt > refreshThreshold && isJwt) {
     return auth.access_token;
   }
 
@@ -304,6 +307,9 @@ export async function ensureFreshAccessToken(email: string): Promise<string> {
       grant_type: "refresh_token",
       refresh_token: auth.refresh_token,
       client_id: CLIENT_ID,
+      // LogTo does not auto-reuse the grant's resource (useGrantedResource=false)
+      // — the refreshed access token must explicitly request it to stay a JWT.
+      resource: RESOURCE,
     }),
   });
   if (!response.ok) {
