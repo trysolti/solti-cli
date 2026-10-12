@@ -29,16 +29,42 @@ export async function jobList(): Promise<void> {
   }
 }
 
-export async function jobStatus(jobIdOrName: string): Promise<void> {
-  const job = (await request(`jobs/${jobIdOrName}`)) as Record<string, unknown> & Job;
-  console.log(`Name:         ${job.name}`);
-  console.log(`ID:           ${job.id}`);
-  console.log(`Status:       ${job.status}`);
-  console.log(`VM Status:    ${job.vm_status ?? "—"}`);
-  console.log(`Cost (EST):   ${job.estimated_cost ?? "—"}`);
-  console.log(`Cost (ACT):   ${job.actual_cost ?? "—"}`);
-  console.log(`Retries:      ${job.retry_count ?? 0}/${job.max_retries ?? 0}`);
-  if (job.error_summary) console.log(`Error:        ${job.error_summary}`);
+export async function jobStatus(jobIdOrName: string, options: { watch?: boolean } = {}): Promise<void> {
+  const terminalStates = new Set(["succeeded", "failed", "cancelled"]);
+  const render = (job: Record<string, unknown> & Job) => {
+    console.log(`Name:         ${job.name}`);
+    console.log(`ID:           ${job.id}`);
+    console.log(`Status:       ${job.status}`);
+    console.log(`VM Status:    ${job.vm_status ?? "—"}`);
+    console.log(`Cost (EST):   ${job.estimated_cost ?? "—"}`);
+    console.log(`Cost (ACT):   ${job.actual_cost ?? "—"}`);
+    console.log(`Retries:      ${job.retry_count ?? 0}/${job.max_retries ?? 0}`);
+    if (job.error_summary) console.log(`Error:        ${job.error_summary}`);
+  };
+
+  if (!options.watch) {
+    render((await request(`jobs/${jobIdOrName}`)) as Record<string, unknown> & Job);
+    return;
+  }
+
+  // §3.9: stream status updates in place until a terminal state — the CLI
+  // counterpart of the SDKs' `wait_until_complete`.
+  process.stdout.write("\x1b[2J\x1b[H");
+  let lastStatus: string | null = null;
+  for (;;) {
+    const job = (await request(`jobs/${jobIdOrName}`)) as Record<string, unknown> & Job;
+    if (job.status !== lastStatus) {
+      process.stdout.write("\x1b[2J\x1b[H");
+      render(job);
+      lastStatus = job.status;
+    }
+    if (terminalStates.has(job.status)) {
+      console.log(`\nJob reached terminal state: ${job.status}`);
+      process.exitCode = job.status === "succeeded" ? 0 : 1;
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
 }
 
 export async function jobCancel(jobIdOrName: string): Promise<void> {
@@ -56,6 +82,7 @@ export async function jobRun(options: {
   maxRetries?: string;
   env?: string[];
   volume?: string[];
+  volumeName?: string;
   resources?: string;
   label?: string[];
   tag?: string[];
@@ -87,12 +114,37 @@ export async function jobRun(options: {
       args: options.args ?? (options.positional.length > 0 ? options.positional : undefined),
       name: options.name,
       namePrefix: options.namePrefix,
-      max_retries: options.maxRetries !== undefined ? Number(options.maxRetries) : undefined,
+      maxRetries: options.maxRetries !== undefined ? Number(options.maxRetries) : undefined,
       env: Object.fromEntries((options.env ?? []).map((e) => e.split("=", 2))),
-      volumes: options.volume?.map((v) => {
-        const [bucket, mountPath] = v.split(":");
-        return { bucket, mountPath };
-      }),
+      volumes: Object.fromEntries(
+        (options.volume ?? []).map((v) => {
+          // Two formats per tools/cli.md: shorthand `bucket:mountPath` or the
+          // structured `bucket=<b>,mountPath=<p>[,connection=...][,prefix=...]`.
+          // The volume name (map key) defaults to the bucket name unless
+          // `--volume-name <name>` is given.
+          let volume: { bucket: string; mountPath: string; connection?: string; prefix?: string };
+          if (v.includes("=")) {
+            const parts = Object.fromEntries(
+              v.split(",").map((pair) => pair.split("=", 2) as [string, string]),
+            );
+            if (!parts.bucket || !parts.mountPath) {
+              throw new Error(
+                `Invalid --volume spec '${v}' — expected bucket=<b>,mountPath=<p>[,connection=...][,prefix=...]`,
+              );
+            }
+            volume = { bucket: parts.bucket, mountPath: parts.mountPath };
+            if (parts.connection) volume.connection = parts.connection;
+            if (parts.prefix) volume.prefix = parts.prefix;
+          } else {
+            const [bucket, mountPath] = v.split(":");
+            if (!bucket || !mountPath) {
+              throw new Error(`Invalid --volume spec '${v}' — expected <bucket>:<mountPath>`);
+            }
+            volume = { bucket, mountPath };
+          }
+          return [options.volumeName ?? volume.bucket, volume];
+        }),
+      ),
       labels: Object.fromEntries((options.label ?? []).map((l) => l.split("=", 2))),
       tags: options.tag,
       cloud: options.cloud,

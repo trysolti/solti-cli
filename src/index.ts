@@ -215,7 +215,8 @@ jobCommand
 	.option("--name-prefix <prefix>", "prefix for auto-generated names")
 	.option("--max-retries <n>", "maximum container retries")
 	.option("--env <key=value>", "environment variable (repeatable)")
-	.option("--volume <bucket:mountPath>", "storage volume mount (repeatable)")
+	.option("--volume <spec>", "storage volume mount: <bucket>:<mountPath> or bucket=<b>,mountPath=<p>[,connection=...][,prefix=...] (repeatable)")
+	.option("--volume-name <name>", "explicit volume name (map key) for --volume")
 	.option("--resources <spec>", "e.g. cpu=4,memory=16Gi")
 	.option("--label <key=value>", "label (repeatable)")
 	.option("--tag <tag>", "tag (repeatable)")
@@ -237,9 +238,10 @@ jobCommand
 
 jobCommand
 	.command("status <job_id_or_name>")
-	.description("Show detailed status of a workload")
-	.action(async (jobIdOrName: string) => {
-		await job.jobStatus(jobIdOrName).catch(fail);
+	.description("Show detailed status of a workload (--watch streams until a terminal state)")
+	.option("--watch", "poll and stream status until the job reaches a terminal state")
+	.action(async (jobIdOrName: string, options: { watch?: boolean }) => {
+		await job.jobStatus(jobIdOrName, { watch: options.watch }).catch(fail);
 	});
 
 jobCommand
