@@ -1,7 +1,9 @@
 import { request } from "../api/client.js";
 
 export async function connectionList(): Promise<void> {
-  const data = (await request("connections")) as {
+  // Trailing slash: collection routes live at /1/connections/ (a bare
+  // /1/connections 307-redirects to an http:// Location behind the LB).
+  const data = (await request("connections/")) as {
     connections?: Array<{ name: string; type: string }>;
   };
   const items = data.connections ?? [];
@@ -62,7 +64,7 @@ export async function connectionCreate(options: {
       process.exitCode = 1;
       return;
   }
-  const created = (await request("connections", { method: "POST", body })) as {
+  const created = (await request("connections/", { method: "POST", body })) as {
     name: string;
     type: string;
   };

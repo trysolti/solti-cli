@@ -108,7 +108,9 @@ export async function projectUse(projectId: string): Promise<void> {
     await writeProfile(account, "default", { project_id: projectId, api_key: null, api_url: null });
   }
   console.log(`Active project set to ${projectId}.`);
-  console.log(`API base URL: https://${projectId}.api.solti.run/1`);
+  // Change 033 D-1: the shared global host scopes requests via the
+  // X-Solti-Project-Id header; per-project wildcard hosts are not deployed.
+  console.log(`API base URL: https://api.solti.run/1`);
 }
 
 export async function projectDelete(projectId: string, options: { yes?: boolean } = {}): Promise<void> {

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import { request } from "../api/client.js";
 
 interface Cronjob {
@@ -10,7 +12,8 @@ interface Cronjob {
 }
 
 export async function cronjobList(): Promise<void> {
-  const data = (await request("cronjobs")) as { cronjobs?: Cronjob[] };
+  // Trailing slash: collection routes live at /1/cronjobs/ (see key.ts).
+  const data = (await request("cronjobs/")) as { cronjobs?: Cronjob[] };
   const items = data.cronjobs ?? [];
   if (items.length === 0) {
     console.log("No cronjobs. Create one with `solti cronjob create --name <n> --schedule <cron> --image <img>`.");
@@ -34,22 +37,50 @@ export async function cronjobShow(idOrName: string): Promise<void> {
 export async function cronjobCreate(options: {
   name: string;
   schedule: string;
-  image: string;
+  file?: string;
+  image?: string;
   command?: string;
   args?: string;
   active?: string;
 }): Promise<void> {
+  // Two forms per tools/cli.md: inline (--image [+ --command/--args]) or a
+  // workload YAML/JSON file reused as the job_definition template (--file).
+  let jobDefinition: Record<string, unknown>;
+  if (options.file !== undefined) {
+    if (options.image !== undefined || options.command !== undefined || options.args !== undefined) {
+      throw new Error("--file cannot be combined with --image/--command/--args");
+    }
+    const raw = fs.readFileSync(options.file, "utf8");
+    let template: Record<string, unknown>;
+    try {
+      template = JSON.parse(raw);
+    } catch {
+      const { parse } = await import("yaml");
+      template = parse(raw) as Record<string, unknown>;
+    }
+    // JobDefinition forbids extra fields — notably a fixed `name` and the
+    // submit-only `namePrefix` (cronjobs/dtos.py).
+    delete template.name;
+    delete template.namePrefix;
+    jobDefinition = template;
+  } else {
+    if (options.image === undefined) {
+      throw new Error("--image is required (or pass --file <job.yaml>)");
+    }
+    jobDefinition = {
+      image: options.image,
+      command: options.command?.split(" ").filter(Boolean),
+      args: options.args?.split(" ").filter(Boolean),
+    };
+  }
   const payload = {
     name: options.name,
     cron_spec: options.schedule,
     is_active: options.active !== "false",
-    job_definition: {
-      image: options.image,
-      command: options.command?.split(" ").filter(Boolean),
-      args: options.args?.split(" ").filter(Boolean),
-    },
+    job_definition: jobDefinition,
   };
-  const c = (await request("cronjobs", { method: "POST", body: payload })) as Cronjob;
+  // Trailing slash: collection routes live at /1/cronjobs/ (see key.ts).
+  const c = (await request("cronjobs/", { method: "POST", body: payload })) as Cronjob;
   console.log(`Cronjob created: ${c.name} (${c.id})`);
 }
 

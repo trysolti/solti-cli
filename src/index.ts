@@ -215,9 +215,10 @@ jobCommand
 	.option("--name-prefix <prefix>", "prefix for auto-generated names")
 	.option("--max-retries <n>", "maximum container retries")
 	.option("--env <key=value>", "environment variable (repeatable)")
-	.option("--volume <spec>", "storage volume mount: <bucket>:<mountPath> or bucket=<b>,mountPath=<p>[,connection=...][,prefix=...] (repeatable)")
+	.option("--env-from-file <path>", "load KEY=VALUE lines from a .env file (explicit --env flags win)")
+	.option("--volume <spec>", "storage volume mount: <bucket>[/<prefix>]:<mountPath> or bucket=<b>,mountPath=<p>[,connection=...][,prefix=...] (repeatable)")
 	.option("--volume-name <name>", "explicit volume name (map key) for --volume")
-	.option("--resources <spec>", "e.g. cpu=4,memory=16Gi")
+	.option("--resources <spec>", "e.g. cpu=4,memory=16Gi,gpu=24Gi or gpu.model=A100,gpu.count=2")
 	.option("--label <key=value>", "label (repeatable)")
 	.option("--tag <tag>", "tag (repeatable)")
 	.option("--cloud <provider>", "cloud constraint (aws | gcp | azure)")
@@ -232,8 +233,10 @@ jobCommand
 jobCommand
 	.command("list")
 	.description("List recent workloads")
-	.action(async () => {
-		await job.jobList().catch(fail);
+	.option("--tag <tag>", "filter by tag (repeatable)")
+	.option("--label <key:value>", "filter by label (repeatable; key=value accepted)")
+	.action(async (options: { tag?: string[]; label?: string[] }) => {
+		await job.jobList(options).catch(fail);
 	});
 
 jobCommand
@@ -273,10 +276,11 @@ cronjobCommand
 
 cronjobCommand
 	.command("create")
-	.description("Create a cronjob")
+	.description("Create a cronjob (--image form, or --file with a workload YAML/JSON template)")
 	.requiredOption("--name <name>", "cronjob name")
 	.requiredOption("--schedule <cron>", "UTC crontab expression")
-	.requiredOption("--image <image>", "container image")
+	.option("--file <path>", "workload YAML/JSON file to use as the job definition template")
+	.option("--image <image>", "container image (inline form; required without --file)")
 	.option("--command <cmd>", "container command (space-separated)")
 	.option("--args <args>", "container arguments (space-separated)")
 	.option("--active <true|false>", "start active (default true)")

@@ -5,10 +5,11 @@ Command-line interface for the [Solti Platform](https://solti.run) — schedule 
 ## Installation
 
 ```bash
-pnpm add -g @solti/cli
-# or
-npm install -g @solti/cli
+brew install trysolti/tap/solti
 ```
+
+npm distribution (`pnpm add -g @solti/cli`) is coming soon — the package is not
+published yet.
 
 ## Quickstart
 

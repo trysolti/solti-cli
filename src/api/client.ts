@@ -78,12 +78,15 @@ export async function resolveCredentials(apiKeyOverride?: string): Promise<Resol
 export function projectBaseUrl(credentials: Credentials, apiUrlOverride?: string | null): string | null {
   const projectId = credentials.projectId;
   if (projectId === undefined || projectId === "") return null;
-  // Precedence: explicit profile override > SOLTI_API_URL env var > default domain.
+  // Precedence: explicit profile override > SOLTI_API_URL env var > global default.
   const override = apiUrlOverride ?? process.env.SOLTI_API_URL;
   if (override !== undefined && override !== null && override !== "") {
     return `${override.replace(/\/$/, "")}/1`;
   }
-  return `https://${projectId}.api.solti.run/1`;
+  // Change 033 D-1: per-project wildcard hosts (<projectId>.api.solti.run) are
+  // not deployed; project-scoped requests go to the shared host and are scoped
+  // by the X-Solti-Project-Id header (sent in request() below).
+  return GLOBAL_API_URL;
 }
 
 /** Returns the active profile's `api_url` override, if set. */

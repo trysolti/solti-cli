@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 import { request } from "../api/client.js";
+import { parseEnvFile, parseResources, parseVolumeShorthand } from "../lib/parse.js";
 
 interface Job {
   id: string;
@@ -13,8 +14,23 @@ interface Job {
   max_retries?: number;
 }
 
-export async function jobList(): Promise<void> {
-  const data = (await request("jobs")) as { jobs: Job[] };
+export async function jobList(
+  options: { tag?: string[]; label?: string[] } = {},
+): Promise<void> {
+  // API filters (jobs/dtos.py ListJobsRequest): repeatable `tag=` and
+  // `label=` query params; labels are "key:value" ("key=value" accepted).
+  const query = new URLSearchParams();
+  for (const tag of options.tag ?? []) query.append("tag", tag);
+  for (const label of options.label ?? []) {
+    if (!label.includes(":") && !label.includes("=")) {
+      throw new Error(`Invalid --label '${label}' — expected key:value (or key=value)`);
+    }
+    query.append("label", label);
+  }
+  const qs = query.toString();
+  // Trailing slash: collection routes live at /1/jobs/ (a bare /1/jobs 307-redirects
+  // to an http:// Location behind the TLS-terminating LB, mangling requests).
+  const data = (await request(`jobs/${qs ? `?${qs}` : ""}`)) as { jobs: Job[] };
   if (data.jobs.length === 0) {
     console.log("No jobs. Submit one with `solti job run --image <image> -- <cmd>`.");
     return;
@@ -81,6 +97,7 @@ export async function jobRun(options: {
   namePrefix?: string;
   maxRetries?: string;
   env?: string[];
+  envFromFile?: string;
   volume?: string[];
   volumeName?: string;
   resources?: string;
@@ -115,11 +132,15 @@ export async function jobRun(options: {
       name: options.name,
       namePrefix: options.namePrefix,
       maxRetries: options.maxRetries !== undefined ? Number(options.maxRetries) : undefined,
-      env: Object.fromEntries((options.env ?? []).map((e) => e.split("=", 2))),
+      env: {
+        // --env-from-file provides the base set; explicit --env flags win.
+        ...(options.envFromFile !== undefined ? parseEnvFile(readEnvFile(options.envFromFile)) : {}),
+        ...Object.fromEntries((options.env ?? []).map((e) => e.split("=", 2))),
+      },
       volumes: Object.fromEntries(
         (options.volume ?? []).map((v) => {
-          // Two formats per tools/cli.md: shorthand `bucket:mountPath` or the
-          // structured `bucket=<b>,mountPath=<p>[,connection=...][,prefix=...]`.
+          // Three formats per tools/cli.md: shorthand `<bucket>[/<prefix>]:<mountPath>`
+          // or the structured `bucket=<b>,mountPath=<p>[,connection=...][,prefix=...]`.
           // The volume name (map key) defaults to the bucket name unless
           // `--volume-name <name>` is given.
           let volume: { bucket: string; mountPath: string; connection?: string; prefix?: string };
@@ -136,11 +157,7 @@ export async function jobRun(options: {
             if (parts.connection) volume.connection = parts.connection;
             if (parts.prefix) volume.prefix = parts.prefix;
           } else {
-            const [bucket, mountPath] = v.split(":");
-            if (!bucket || !mountPath) {
-              throw new Error(`Invalid --volume spec '${v}' — expected <bucket>:<mountPath>`);
-            }
-            volume = { bucket, mountPath };
+            volume = parseVolumeShorthand(v);
           }
           return [options.volumeName ?? volume.bucket, volume];
         }),
@@ -151,19 +168,29 @@ export async function jobRun(options: {
       region: options.region,
     };
     if (options.resources !== undefined) {
-      const [cpu, memory] = options.resources.split(",");
+      const parsed = parseResources(options.resources);
       payload.resources = {
-        cpu: Number(cpu),
-        ...(memory !== undefined ? { memory: memory.trim() } : {}),
+        ...(parsed.cpu !== undefined ? { cpu: parsed.cpu } : {}),
+        ...(parsed.memory !== undefined ? { memory: parsed.memory } : {}),
+        ...(parsed.gpu !== undefined ? { gpu: parsed.gpu } : {}),
       };
     }
   }
 
-  const job = (await request("jobs", { method: "POST", body: payload })) as {
+  // Trailing slash: collection routes live at /1/jobs/ (see jobList).
+  const job = (await request("jobs/", { method: "POST", body: payload })) as {
     job_id?: string;
     id?: string;
     name: string;
     status: string;
   };
   console.log(`Job submitted: ${job.name} (${job.job_id ?? job.id}) — ${job.status}`);
+}
+
+function readEnvFile(path: string): string {
+  try {
+    return fs.readFileSync(path, "utf8");
+  } catch {
+    throw new Error(`--env-from-file: cannot read '${path}' — check that the file exists`);
+  }
 }
