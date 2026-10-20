@@ -32,8 +32,10 @@ const accountCommand = program.command("account").description("Manage logged-in 
 accountCommand
   .command("login")
   .description("Log in via your browser (LogTo OAuth)")
-  .action(async () => {
-    await account.accountLogin().catch(fail);
+  .option("--no-launch-browser", "print the sign-in URL instead of opening a browser")
+  .action(async (_args, command) => {
+    const { launchBrowser } = command.opts() as { launchBrowser?: boolean };
+    await account.accountLogin({ launchBrowser }).catch(fail);
   });
 
 accountCommand

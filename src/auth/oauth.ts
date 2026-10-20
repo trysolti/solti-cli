@@ -75,7 +75,8 @@ interface LoginResult {
 }
 
 /** Runs the full Authorization Code + PKCE flow and stores tokens. */
-export async function login(): Promise<LoginResult> {
+export async function login(options?: { launchBrowser?: boolean }): Promise<LoginResult> {
+  const launchBrowser = options?.launchBrowser ?? true;
   const oidc = await discover();
 
   const codeVerifier = base64url(crypto.randomBytes(64));
@@ -100,8 +101,12 @@ export async function login(): Promise<LoginResult> {
   // (first-party apps skip the visible consent screen).
   authorizationUrl.searchParams.set("prompt", "consent");
 
-  console.log(`Opening browser for sign-in:\n  ${authorizationUrl.toString()}\n`);
-  openBrowser(authorizationUrl.toString());
+  if (launchBrowser) {
+    console.log(`Opening browser for sign-in:\n  ${authorizationUrl.toString()}\n`);
+    openBrowser(authorizationUrl.toString());
+  } else {
+    console.log(`Sign-in URL (open it in a browser to continue):\n  ${authorizationUrl.toString()}\n`);
+  }
 
   const code = await waitForCallback(server, state);
   server.close();

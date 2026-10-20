@@ -13,8 +13,8 @@ function redact(token: string): string {
   return `${token.slice(0, 8)}…${token.slice(-4)}`;
 }
 
-export async function accountLogin(): Promise<void> {
-  const { email } = await login();
+export async function accountLogin(options?: { launchBrowser?: boolean }): Promise<void> {
+  const { email } = await login(options);
   console.log(`Logged in as ${email}.`);
 }
 
