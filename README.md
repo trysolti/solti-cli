@@ -8,8 +8,12 @@ Command-line interface for the [Solti Platform](https://solti.run) — schedule 
 brew install trysolti/tap/solti
 ```
 
-npm distribution (`pnpm add -g @solti/cli`) is coming soon — the package is not
-published yet.
+Or via Node.js (>= 20) with npm / pnpm:
+
+```bash
+npm install -g @solti/cli
+# or: pnpm add -g @solti/cli
+```
 
 ## Quickstart
 

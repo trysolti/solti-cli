@@ -3,7 +3,12 @@
   "version": "0.1.1",
   "description": "Solti Platform CLI — schedule and run asynchronous workloads without managing infrastructure.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "solti": "dist/index.js"
   },
