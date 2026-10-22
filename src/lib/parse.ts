@@ -3,6 +3,19 @@
  * §2.2). Kept free of I/O so they can be unit-tested directly (tests/parse.test.ts).
  */
 
+/** Normalizes repeatable + comma-separated flag values (cli.md §2.2:
+ * `--cloud aws,gcp` and `--cloud aws --cloud gcp` are both valid). Returns a
+ * flat, trimmed, empty-item-free array so the API always receives a JSON
+ * array — a scalar `cloud`/`region` payload is what poisoned jobs.cloud on
+ * the live API (Change 048). */
+export function parseStringList(values: string[] | string | undefined): string[] {
+  const list = values === undefined ? [] : Array.isArray(values) ? values : [values];
+  return list
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value) => value !== "");
+}
+
 /** Parses `.env`-style content: KEY=VALUE lines; blank lines and `#`
  * comments are ignored; whitespace is trimmed; matching surrounding quotes
  * are stripped from values. */

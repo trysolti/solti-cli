@@ -21,6 +21,13 @@ export interface AuthStore {
   expires_at: string; // ISO timestamp
   token_type: string; // "Bearer"
   email?: string;
+  /** LogTo issuer this account authenticated against (Change 048). Persisted
+   * at login so token refresh/logout hit the same environment. Absent on
+   * auth.json files written before Change 048 — callers fall back to the
+   * `iss` claim of the stored access_token, then to the ISSUER default. */
+  issuer?: string;
+  /** LogTo client_id used at login (pairs with `issuer`). */
+  client_id?: string;
 }
 
 export interface ProfileConfig {

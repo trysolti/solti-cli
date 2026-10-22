@@ -1,11 +1,21 @@
 /**
  * LogTo OAuth 2.0 Authorization Code + PKCE flow for the Solti CLI.
  *
- * Registered client (Change 004 — see
- * solti-specs/changes/004--easier-platform-access/logto-changes.md):
- * - "Solti CLI" native app, public client (no secret)
- * - Redirect URIs: http://localhost:4242..4245/callback (exact-match; no wildcards)
- * - Resource `https://api.solti.run` so access tokens are verifiable JWTs
+ * Registered clients (Change 004; live apps replicated in Change 007):
+ * - live  LogTo (https://auth.solti.run/oidc):      "Solti CLI" native app `1mo3mre0396x2a1ux5q93`
+ * - dev   LogTo (https://auth.dev.solti.run/oidc):  "Solti CLI" native app `sae2x70zlqqv4qs3gw6cu`
+ * - Public clients (no secret); redirect URIs http://localhost:4242..4245/callback
+ *   (exact-match; no wildcards); resource `https://api.solti.run` so access
+ *   tokens are verifiable JWTs.
+ *
+ * The DEFAULT issuer is the live one: the CLI's default API host is the live
+ * `https://api.solti.run/1`, and the live API rejects dev-issued tokens
+ * ("Missing user context for project scope" / "User is not authenticated")
+ * — the previous dev default made plain `solti account login` unusable
+ * against the default API (Change 048). Dev-issuer sign-in remains available
+ * via SOLTI_LOGTO_ISSUER / SOLTI_LOGTO_CLIENT_ID. Whichever environment a
+ * login used is persisted per account (AuthStore.issuer/client_id) so token
+ * refresh and logout hit the same LogTo instance.
  */
 
 import crypto from "node:crypto";
@@ -23,10 +33,51 @@ import {
   type AuthStore,
 } from "../config/store.js";
 
-export const CLIENT_ID = process.env.SOLTI_LOGTO_CLIENT_ID ?? "sae2x70zlqqv4qs3gw6cu";
-export const ISSUER = process.env.SOLTI_LOGTO_ISSUER ?? "https://auth.dev.solti.run/oidc";
+export const CLIENT_ID = process.env.SOLTI_LOGTO_CLIENT_ID ?? "1mo3mre0396x2a1ux5q93";
+export const ISSUER = process.env.SOLTI_LOGTO_ISSUER ?? "https://auth.solti.run/oidc";
 export const RESOURCE = process.env.SOLTI_LOGTO_RESOURCE ?? "https://api.solti.run";
 export const SCOPES = "openid profile email offline_access";
+
+/** Resolved per-account OIDC endpoints: the issuer/client_id persisted at
+ * login wins; legacy auth.json entries fall back to the `iss`/`client_id`
+ * claims of the stored access_token JWT, then to the module defaults. */
+export interface OidcConfig {
+  issuer: string;
+  clientId: string;
+}
+
+/** Decodes JWT payload claims (no signature check — best-effort hints only). */
+function decodeJwtClaims(token: string | undefined): Record<string, unknown> | null {
+  if (token === undefined) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return null;
+  }
+}
+
+/** Per-account OIDC resolution for refresh/logout (pure — unit-tested). */
+export function resolveOidc(auth: {
+  issuer?: string;
+  client_id?: string;
+  access_token: string;
+}): OidcConfig {
+  const claims = decodeJwtClaims(auth.access_token);
+  const issuer =
+    auth.issuer ??
+    (typeof claims?.iss === "string" && claims.iss !== "" ? claims.iss : null) ??
+    ISSUER;
+  const clientId =
+    auth.client_id ??
+    (typeof claims?.client_id === "string" && claims.client_id !== "" ? claims.client_id : null) ??
+    CLIENT_ID;
+  return { issuer, clientId };
+}
 
 /** Fixed registered loopback port range (spec §1.1 / logto-changes.md §5.1). */
 const CALLBACK_PORTS = [4242, 4243, 4244, 4245];
@@ -39,16 +90,18 @@ interface Discovery {
   revocation_endpoint?: string;
 }
 
-let discoveryCache: Discovery | null = null;
+const discoveryCache = new Map<string, Discovery>();
 
-export async function discover(): Promise<Discovery> {
-  if (discoveryCache !== null) return discoveryCache;
-  const response = await fetch(`${ISSUER}/.well-known/openid-configuration`);
+export async function discover(issuer: string = ISSUER): Promise<Discovery> {
+  const cached = discoveryCache.get(issuer);
+  if (cached !== undefined) return cached;
+  const response = await fetch(`${issuer}/.well-known/openid-configuration`);
   if (!response.ok) {
     throw new Error(`Failed to discover LogTo OIDC configuration (HTTP ${response.status})`);
   }
-  discoveryCache = (await response.json()) as Discovery;
-  return discoveryCache;
+  const discovery = (await response.json()) as Discovery;
+  discoveryCache.set(issuer, discovery);
+  return discovery;
 }
 
 function base64url(buffer: Buffer): string {
@@ -140,6 +193,10 @@ export async function login(options?: { launchBrowser?: boolean }): Promise<Logi
     expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
     token_type: tokens.token_type ?? "Bearer",
     email,
+    // Persist the environment this login used so refresh/logout stay on the
+    // same LogTo instance (Change 048).
+    issuer: ISSUER,
+    client_id: CLIENT_ID,
   };
   await writeAuth(email, auth);
 
@@ -304,14 +361,15 @@ export async function ensureFreshAccessToken(email: string): Promise<string> {
     );
   }
 
-  const oidc = await discover();
+  const { issuer, clientId } = resolveOidc(auth);
+  const oidc = await discover(issuer);
   const response = await fetch(oidc.token_endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: auth.refresh_token,
-      client_id: CLIENT_ID,
+      client_id: clientId,
       // LogTo does not auto-reuse the grant's resource (useGrantedResource=false)
       // — the refreshed access token must explicitly request it to stay a JWT.
       resource: RESOURCE,
@@ -334,6 +392,9 @@ export async function ensureFreshAccessToken(email: string): Promise<string> {
     // LogTo rotates refresh tokens on use — persist the new one.
     refresh_token: tokens.refresh_token ?? auth.refresh_token,
     expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+    // Stamp the resolved environment so legacy auth.json entries are upgraded.
+    issuer,
+    client_id: clientId,
   };
   await writeAuth(email, updated);
   return updated.access_token;
@@ -344,12 +405,13 @@ export async function logout(email: string): Promise<void> {
   const auth = await readAuth(email);
   if (auth !== null && auth.refresh_token !== "") {
     try {
-      const oidc = await discover();
+      const { issuer, clientId } = resolveOidc(auth);
+      const oidc = await discover(issuer);
       if (oidc.revocation_endpoint !== undefined) {
         await fetch(oidc.revocation_endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ token: auth.refresh_token, client_id: CLIENT_ID }),
+          body: new URLSearchParams({ token: auth.refresh_token, client_id: clientId }),
         });
       }
     } catch {

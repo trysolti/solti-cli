@@ -25,6 +25,13 @@ function fail(error: unknown): never {
   process.exit(1);
 }
 
+/** Commander collector for repeatable valued options: each occurrence appends
+ * (plain non-collect options overwrite — last value wins). Comma-separated
+ * values stay joined here; commands split them via parseStringList. */
+function collectValues(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 // --- account ----------------------------------------------------------------
 
 const accountCommand = program.command("account").description("Manage logged-in accounts");
@@ -223,8 +230,8 @@ jobCommand
 	.option("--resources <spec>", "e.g. cpu=4,memory=16Gi,gpu=24Gi or gpu.model=A100,gpu.count=2")
 	.option("--label <key=value>", "label (repeatable)")
 	.option("--tag <tag>", "tag (repeatable)")
-	.option("--cloud <provider>", "cloud constraint (aws | gcp | azure)")
-	.option("--region <region>", "region constraint")
+	.option("--cloud <provider>", "cloud constraint (aws | gcp | azure; repeatable or comma-separated)", collectValues, [])
+	.option("--region <region>", "region constraint (repeatable or comma-separated)", collectValues, [])
 	.allowUnknownOption(true)
 	.argument("[operands...]", "positional command and args (after --)")
 	.action(async (_operands, options, command) => {

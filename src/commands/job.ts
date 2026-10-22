@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 import { request } from "../api/client.js";
-import { parseEnvFile, parseResources, parseVolumeShorthand } from "../lib/parse.js";
+import { parseEnvFile, parseResources, parseStringList, parseVolumeShorthand } from "../lib/parse.js";
 
 interface Job {
   id: string;
@@ -15,13 +15,17 @@ interface Job {
 }
 
 export async function jobList(
-  options: { tag?: string[]; label?: string[] } = {},
+  options: { tag?: string[] | string; label?: string[] | string } = {},
 ): Promise<void> {
   // API filters (jobs/dtos.py ListJobsRequest): repeatable `tag=` and
   // `label=` query params; labels are "key:value" ("key=value" accepted).
+  // Commander keeps a non-collect option as a scalar when used once, so
+  // coerce to arrays here (a bare string would otherwise iterate chars).
+  const tags = parseStringList(options.tag);
+  const labels = parseStringList(options.label);
   const query = new URLSearchParams();
-  for (const tag of options.tag ?? []) query.append("tag", tag);
-  for (const label of options.label ?? []) {
+  for (const tag of tags) query.append("tag", tag);
+  for (const label of labels) {
     if (!label.includes(":") && !label.includes("=")) {
       throw new Error(`Invalid --label '${label}' — expected key:value (or key=value)`);
     }
@@ -103,8 +107,8 @@ export async function jobRun(options: {
   resources?: string;
   label?: string[];
   tag?: string[];
-  cloud?: string;
-  region?: string;
+  cloud?: string[] | string;
+  region?: string[] | string;
   positional: string[];
 }): Promise<void> {
   let payload: Record<string, unknown>;
@@ -164,8 +168,11 @@ export async function jobRun(options: {
       ),
       labels: Object.fromEntries((options.label ?? []).map((l) => l.split("=", 2))),
       tags: options.tag,
-      cloud: options.cloud,
-      region: options.region,
+      // Arrays only — Change 048: the API accepts the documented scalar form
+      // (`cloud: aws`) but a scalar JSON string in jobs.cloud 500s every
+      // /1/jobs* read, so the CLI always sends arrays.
+      cloud: parseStringList(options.cloud).length > 0 ? parseStringList(options.cloud) : undefined,
+      region: parseStringList(options.region).length > 0 ? parseStringList(options.region) : undefined,
     };
     if (options.resources !== undefined) {
       const parsed = parseResources(options.resources);
