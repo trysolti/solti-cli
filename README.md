@@ -56,5 +56,3 @@ pnpm install
 pnpm build
 node dist/index.js --help
 ```
-
-Spec: `../solti-specs/constitution/tools/cli.md` (implementation tracked under Change 004).
