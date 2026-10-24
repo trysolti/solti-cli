@@ -1,6 +1,6 @@
 {
   "name": "@solti/cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Solti Platform CLI \u2014 schedule and run asynchronous workloads without managing infrastructure.",
   "type": "module",
   "license": "MIT",

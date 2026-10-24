@@ -90,6 +90,24 @@ export function projectBaseUrl(credentials: Credentials, apiUrlOverride?: string
 }
 
 /** Returns the active profile's `api_url` override, if set. */
+/** Returns the api-url override for the current invocation.
+ *
+ * Headless env auth (SOLTI_API_KEY set without an explicit SOLTI_PROFILE)
+ * bypasses local profile config entirely: otherwise the active profile's
+ * `api_url` silently hijacks SOLTI_API_URL and headless requests are routed
+ * to the wrong host (observed 2026-10-24 — headless preview requests were
+ * served by the live API because the active syslive profile pointed there).
+ * With SOLTI_PROFILE set explicitly, that profile's `api_url` wins over the
+ * env var (documented precedence); without a profile override, the env var
+ * applies. */
+export async function resolveApiUrlOverride(): Promise<string | null> {
+  if (process.env.SOLTI_API_KEY && !process.env.SOLTI_PROFILE) {
+    return process.env.SOLTI_API_URL ?? null;
+  }
+  const profileOverride = await profileApiUrlOverride();
+  return profileOverride ?? process.env.SOLTI_API_URL ?? null;
+}
+
 async function profileApiUrlOverride(): Promise<string | null> {
   const account = await getActiveAccount();
   if (account === null) return null;
@@ -146,7 +164,7 @@ export async function request(path: string, options: RequestOptions = {}): Promi
       throw new Error("Global endpoints (account/organization/project) require OAuth login (`solti account login`).");
     }
   } else {
-    const override = await profileApiUrlOverride();
+    const override = await resolveApiUrlOverride();
     const url = projectBaseUrl(credentials, override);
     if (url === null) {
       throw new Error(
