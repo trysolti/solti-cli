@@ -2,6 +2,8 @@
 
 Command-line interface for the [Solti Platform](https://solti.run) — schedule and run asynchronous workloads without managing infrastructure.
 
+**Package:** `@solti/cli` · **License:** MIT
+
 ## Installation
 
 ```bash
