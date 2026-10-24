@@ -16,9 +16,20 @@ const program = new Command();
 program
   .name("solti")
   .description("Solti Platform CLI — schedule and run asynchronous workloads without managing infrastructure.")
-  .version("0.1.2")
+  .version("0.1.3")
   .option("--profile <name>", "override the active profile (or set SOLTI_PROFILE)")
   .option("--api-key <key>", "override the API key (or set SOLTI_API_KEY)");
+
+// Global override flags must take effect before any command resolves its
+// credentials: every resolution path reads SOLTI_PROFILE / SOLTI_API_KEY from
+// the environment (resolveCredentials, profile stores), so map the explicit
+// flags onto the env vars here. Explicit flags win over a pre-set env var —
+// they are the more specific user intent.
+program.hook("preAction", (thisCommand: Command) => {
+  const globalOptions = thisCommand.opts() as { profile?: string; apiKey?: string };
+  if (globalOptions.profile) process.env.SOLTI_PROFILE = globalOptions.profile;
+  if (globalOptions.apiKey) process.env.SOLTI_API_KEY = globalOptions.apiKey;
+});
 
 function fail(error: unknown): never {
   console.error(`error: ${(error as Error).message}`);
