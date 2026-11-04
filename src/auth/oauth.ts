@@ -1,21 +1,28 @@
 /**
- * LogTo OAuth 2.0 Authorization Code + PKCE flow for the Solti CLI.
+ * Solti ID (Authorizer) OAuth 2.0 Authorization Code + PKCE flow for the
+ * Solti CLI (Change 057f — direct loopback PKCE, no relay, no solti-api
+ * token endpoints).
  *
- * Registered clients (Change 004; live apps replicated in Change 007):
- * - live  LogTo (https://auth.solti.run/oidc):      "Solti CLI" native app `1mo3mre0396x2a1ux5q93`
- * - dev   LogTo (https://auth.dev.solti.run/oidc):  "Solti CLI" native app `sae2x70zlqqv4qs3gw6cu`
- * - Public clients (no secret); redirect URIs http://localhost:4242..4245/callback
- *   (exact-match; no wildcards); resource `https://api.solti.run` so access
- *   tokens are verifiable JWTs.
+ * Registered reserved interactive clients (Change 057b spike; public clients,
+ * no secret — authorization_code+PKCE token exchanges need client_id alone,
+ * refresh/revoke need client_id + token):
+ * - live  Authorizer (https://id.solti.run):     `113215f1a2a2beeed9f5c6279e3537a2`
+ * - dev   Authorizer (https://id.dev.solti.run): `b7435147811323ceb1055d8bec85b315`
+ * - Redirect URIs http://localhost:4242..4245/callback (exact-match, also
+ *   registered as allowed origins); scopes `openid offline_access email
+ *   profile`. No OAuth `resource` param: access tokens are Authorizer JWTs
+ *   with aud=client_id and solti-api now validates aud=client_id (057e).
  *
  * The DEFAULT issuer is the live one: the CLI's default API host is the live
  * `https://api.solti.run/1`, and the live API rejects dev-issued tokens
- * ("Missing user context for project scope" / "User is not authenticated")
  * — the previous dev default made plain `solti account login` unusable
  * against the default API (Change 048). Dev-issuer sign-in remains available
- * via SOLTI_LOGTO_ISSUER / SOLTI_LOGTO_CLIENT_ID. Whichever environment a
- * login used is persisted per account (AuthStore.issuer/client_id) so token
- * refresh and logout hit the same LogTo instance.
+ * via SOLTI_AUTHORIZER_ISSUER / SOLTI_AUTHORIZER_CLIENT_ID (the pre-migration
+ * SOLTI_LOGTO_ISSUER / SOLTI_LOGTO_CLIENT_ID names are still honored as
+ * deprecated fallbacks so existing env profiles survive the migration).
+ * Whichever environment a login used is persisted per account
+ * (AuthStore.issuer/client_id) so token refresh and logout hit the same
+ * Authorizer instance.
  */
 
 import crypto from "node:crypto";
@@ -33,10 +40,26 @@ import {
   type AuthStore,
 } from "../config/store.js";
 
-export const CLIENT_ID = process.env.SOLTI_LOGTO_CLIENT_ID ?? "1mo3mre0396x2a1ux5q93";
-export const ISSUER = process.env.SOLTI_LOGTO_ISSUER ?? "https://auth.solti.run/oidc";
-export const RESOURCE = process.env.SOLTI_LOGTO_RESOURCE ?? "https://api.solti.run";
-export const SCOPES = "openid profile email offline_access";
+export const CLIENT_ID =
+  process.env.SOLTI_AUTHORIZER_CLIENT_ID ??
+  process.env.SOLTI_LOGTO_CLIENT_ID ??
+  "113215f1a2a2beeed9f5c6279e3537a2";
+export const ISSUER =
+  process.env.SOLTI_AUTHORIZER_ISSUER ??
+  process.env.SOLTI_LOGTO_ISSUER ??
+  "https://id.solti.run";
+export const SCOPES = "openid offline_access email profile";
+
+/** Manual endpoint fallback for issuers whose OIDC discovery is unavailable
+ * (Change 057b evidence: Authorizer serves the standard paths). */
+function fallbackEndpoints(issuer: string): Discovery {
+  return {
+    authorization_endpoint: `${issuer}/authorize`,
+    token_endpoint: `${issuer}/oauth/token`,
+    userinfo_endpoint: `${issuer}/userinfo`,
+    revocation_endpoint: `${issuer}/oauth/revoke`,
+  };
+}
 
 /** Resolved per-account OIDC endpoints: the issuer/client_id persisted at
  * login wins; legacy auth.json entries fall back to the `iss`/`client_id`
@@ -79,7 +102,10 @@ export function resolveOidc(auth: {
   return { issuer, clientId };
 }
 
-/** Fixed registered loopback port range (spec §1.1 / logto-changes.md §5.1). */
+/** Fixed registered loopback port range (spec §1.1 / logto-changes.md §5.1).
+ * The listener binds dual-stack (no explicit host) so browsers resolving
+ * `localhost` to ::1 still reach the callback server (observed in the 057f
+ * e2e: Chromium connected to ::1 only). */
 const CALLBACK_PORTS = [4242, 4243, 4244, 4245];
 const CALLBACK_PATH = "/callback";
 
@@ -95,13 +121,20 @@ const discoveryCache = new Map<string, Discovery>();
 export async function discover(issuer: string = ISSUER): Promise<Discovery> {
   const cached = discoveryCache.get(issuer);
   if (cached !== undefined) return cached;
-  const response = await fetch(`${issuer}/.well-known/openid-configuration`);
-  if (!response.ok) {
-    throw new Error(`Failed to discover LogTo OIDC configuration (HTTP ${response.status})`);
+  try {
+    const response = await fetch(`${issuer}/.well-known/openid-configuration`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const discovery = (await response.json()) as Discovery;
+    discoveryCache.set(issuer, discovery);
+    return discovery;
+  } catch {
+    // Discovery unavailable — fall back to the standard Authorizer paths.
+    const discovery = fallbackEndpoints(issuer);
+    discoveryCache.set(issuer, discovery);
+    return discovery;
   }
-  const discovery = (await response.json()) as Discovery;
-  discoveryCache.set(issuer, discovery);
-  return discovery;
 }
 
 function base64url(buffer: Buffer): string {
@@ -146,13 +179,9 @@ export async function login(options?: { launchBrowser?: boolean }): Promise<Logi
   authorizationUrl.searchParams.set("client_id", CLIENT_ID);
   authorizationUrl.searchParams.set("redirect_uri", redirectUri);
   authorizationUrl.searchParams.set("scope", SCOPES);
-  authorizationUrl.searchParams.set("resource", RESOURCE);
   authorizationUrl.searchParams.set("code_challenge", codeChallenge);
   authorizationUrl.searchParams.set("code_challenge_method", "S256");
   authorizationUrl.searchParams.set("state", state);
-  // LogTo only issues a refresh token when `prompt=consent` is requested
-  // (first-party apps skip the visible consent screen).
-  authorizationUrl.searchParams.set("prompt", "consent");
 
   if (launchBrowser) {
     console.log(`Opening browser for sign-in:\n  ${authorizationUrl.toString()}\n`);
@@ -172,7 +201,7 @@ export async function login(options?: { launchBrowser?: boolean }): Promise<Logi
     id_token?: string;
   };
 
-  // Diagnostics: help identify what LogTo actually granted.
+  // Diagnostics: help identify what the issuer actually granted.
   if (tokens.access_token.split(".").length !== 3) {
     console.error(
       "(warning: access token is opaque, not a JWT — the API resource was not bound to the grant)",
@@ -194,7 +223,7 @@ export async function login(options?: { launchBrowser?: boolean }): Promise<Logi
     token_type: tokens.token_type ?? "Bearer",
     email,
     // Persist the environment this login used so refresh/logout stay on the
-    // same LogTo instance (Change 048).
+    // same Authorizer instance (Change 048, retargeted by 057f).
     issuer: ISSUER,
     client_id: CLIENT_ID,
   };
@@ -230,7 +259,7 @@ function bindCallbackServer(): Promise<http.Server> {
           reject(error);
         }
       });
-      server.listen(port, "127.0.0.1", () => {
+      server.listen(port, () => {
         resolve(server);
       });
     };
@@ -292,7 +321,6 @@ async function exchangeCode(
       redirect_uri: redirectUri,
       client_id: CLIENT_ID,
       code_verifier: codeVerifier,
-      resource: RESOURCE,
     }),
   });
   if (!response.ok) {
@@ -348,7 +376,7 @@ export async function ensureFreshAccessToken(email: string): Promise<string> {
 
   const expiresAt = Date.parse(auth.expires_at);
   const refreshThreshold = Date.now() + 5 * 60 * 1000;
-  // An opaque access token is useless against resource-scoped API endpoints —
+  // An opaque (non-JWT) access token is useless against JWT-verifying APIs —
   // treat it as stale and refresh into a JWT.
   const isJwt = auth.access_token.split(".").length === 3;
   if (Number.isFinite(expiresAt) && expiresAt > refreshThreshold && isJwt) {
@@ -370,14 +398,12 @@ export async function ensureFreshAccessToken(email: string): Promise<string> {
       grant_type: "refresh_token",
       refresh_token: auth.refresh_token,
       client_id: clientId,
-      // LogTo does not auto-reuse the grant's resource (useGrantedResource=false)
-      // — the refreshed access token must explicitly request it to stay a JWT.
-      resource: RESOURCE,
     }),
   });
   if (!response.ok) {
     throw new Error(
-      `Token refresh failed for ${email} (HTTP ${response.status}). Run \`solti account login\`.`,
+      `Token refresh failed for ${email} (HTTP ${response.status}): ` +
+        `session expired — run \`solti account login\` again.`,
     );
   }
   const tokens = (await response.json()) as {
@@ -389,7 +415,7 @@ export async function ensureFreshAccessToken(email: string): Promise<string> {
   const updated: AuthStore = {
     ...auth,
     access_token: tokens.access_token,
-    // LogTo rotates refresh tokens on use — persist the new one.
+    // Authorizer rotates refresh tokens on use — persist the new one.
     refresh_token: tokens.refresh_token ?? auth.refresh_token,
     expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
     // Stamp the resolved environment so legacy auth.json entries are upgraded.

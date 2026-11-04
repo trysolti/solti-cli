@@ -1,15 +1,15 @@
 /**
- * Change 048 — per-account LogTo issuer resolution.
+ * Change 048 — per-account issuer resolution (retargeted to Solti ID /
+ * Authorizer by Change 057f).
  *
- * The CLI's default API host is the live `https://api.solti.run/1`, but the
- * OAuth issuer defaulted to the dev LogTo — the live API rejects dev-issued
- * tokens ("Missing user context for project scope"), so plain `solti account
- * login` was unusable. Fix: default issuer/client_id are the live LogTo
- * (Change 007 B3: CLI app `1mo3mre0396x2a1ux5q93`), and the environment used
- * at login is persisted per account (AuthStore.issuer/client_id) so refresh
- * and logout stay on the same LogTo. Legacy auth.json entries (no `issuer`
- * field) fall back to the `iss`/`client_id` claims of the stored access_token
- * JWT, then to the module defaults.
+ * The CLI's default API host is the live `https://api.solti.run/1`, and the
+ * live API rejects dev-issued tokens, so plain `solti account login` must
+ * default to the live issuer (live Authorizer client from the 057b spike:
+ * `113215f1a2a2beeed9f5c6279e3537a2`). The environment used at login is
+ * persisted per account (AuthStore.issuer/client_id) so refresh and logout
+ * stay on the same issuer. Legacy auth.json entries (no `issuer` field)
+ * fall back to the `iss`/`client_id` claims of the stored access_token JWT,
+ * then to the module defaults.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -55,8 +55,8 @@ describe("resolveOidc", () => {
     expect(config).toEqual({ issuer: ISSUER, clientId: CLIENT_ID });
   });
 
-  test("defaults point at the live LogTo (matching the default API host)", () => {
-    expect(ISSUER).toBe("https://auth.solti.run/oidc");
-    expect(CLIENT_ID).toBe("1mo3mre0396x2a1ux5q93");
+  test("defaults point at the live Solti ID / Authorizer (matching the default API host)", () => {
+    expect(ISSUER).toBe("https://id.solti.run");
+    expect(CLIENT_ID).toBe("113215f1a2a2beeed9f5c6279e3537a2");
   });
 });

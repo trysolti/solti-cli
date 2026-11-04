@@ -49,7 +49,7 @@ const accountCommand = program.command("account").description("Manage logged-in 
 
 accountCommand
   .command("login")
-  .description("Log in via your browser (LogTo OAuth)")
+  .description("Log in via your browser (Solti ID)")
   .option("--no-launch-browser", "print the sign-in URL instead of opening a browser")
   .action(async (_args, command) => {
     const { launchBrowser } = command.opts() as { launchBrowser?: boolean };
