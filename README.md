@@ -2,7 +2,7 @@
 
 Command-line interface for the [Solti Platform](https://solti.run) — schedule and run asynchronous workloads without managing infrastructure.
 
-**Package:** `@solti/cli` · **License:** MIT
+**Packages:** `@solti/cli` (npm) · `solti-cli` (PyPI) · **License:** MIT
 
 ## Installation
 
@@ -15,6 +15,13 @@ Or via Node.js (>= 20) with npm / pnpm:
 ```bash
 npm install -g @solti/cli
 # or: pnpm add -g @solti/cli
+```
+
+Or via pip / uv (requires Node.js >= 20 on your PATH):
+
+```bash
+pip install solti-cli
+# or: uv add solti-cli
 ```
 
 ## Quickstart
@@ -55,4 +62,14 @@ State is stored under `~/.solti/`:
 pnpm install
 pnpm build
 node dist/index.js --help
+```
+
+### PyPI packaging (Change 069)
+
+The `solti-cli` Python package vendors a self-contained Node bundle. To
+rebuild it after a code change:
+
+```bash
+pnpm build && pnpm bundle:python
+uv build
 ```

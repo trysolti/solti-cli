@@ -1,7 +1,7 @@
 {
   "name": "@solti/cli",
   "version": "0.1.4",
-  "description": "Solti Platform CLI \u2014 schedule and run asynchronous workloads without managing infrastructure.",
+  "description": "Solti Platform CLI — schedule and run asynchronous workloads without managing infrastructure.",
   "type": "module",
   "license": "MIT",
   "files": [
@@ -18,7 +18,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "bun test"
+    "test": "bun test",
+    "bundle:python": "esbuild dist/index.js --bundle --platform=node --format=cjs --target=node20 --outfile=solti_cli/vendor/cli.cjs"
   },
   "dependencies": {
     "commander": "^14.0.2",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "esbuild": "^0.28.2",
     "typescript": "^5.9.3"
   }
 }

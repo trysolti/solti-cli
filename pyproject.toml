@@ -1,0 +1,38 @@
+[project]
+name = "solti-cli"
+version = "0.1.4"
+description = "Solti Platform CLI — schedule and run asynchronous workloads without managing infrastructure."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Solti", email = "support@solti.run" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development",
+]
+
+[project.urls]
+Homepage = "https://solti.run"
+Documentation = "https://docs.solti.run"
+
+[project.scripts]
+solti = "solti_cli.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["solti_cli"]
+# vendor/ is gitignored (build artifact) but must ship in the package.
+artifacts = ["solti_cli/vendor/*.cjs"]
+
+[tool.hatch.build.targets.sdist]
+# Keep solti_cli/ (incl. the vendored bundle) so the wheel can be rebuilt
+# from the sdist; everything else is Node-side build material.
+exclude = ["node_modules", "dist", "src", "tests", "tsconfig.json", "pnpm-lock.yaml"]
+artifacts = ["solti_cli/vendor/*.cjs"]
