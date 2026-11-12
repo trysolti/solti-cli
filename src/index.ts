@@ -18,15 +18,25 @@ program
   .description("Solti Platform CLI — schedule and run asynchronous workloads without managing infrastructure.")
   .version("0.1.4")
   .option("--profile <name>", "override the active profile (or set SOLTI_PROFILE)")
-  .option("--api-key <key>", "override the API key (or set SOLTI_API_KEY)");
+  .option("--api-key <key>", "override the API key (or set SOLTI_API_KEY)")
+  // Positional options: the root only consumes its options BEFORE the
+  // subcommand. Without this, commander's root-level parse swallows an
+  // occurrence of --api-key after the subcommand too, so `profile set` (which
+  // declares its own --api-key) never sees the value and silently persists
+  // null (change 073 follow-up, item 20).
+  .enablePositionalOptions();
 
 // Global override flags must take effect before any command resolves its
 // credentials: every resolution path reads SOLTI_PROFILE / SOLTI_API_KEY from
 // the environment (resolveCredentials, profile stores), so map the explicit
 // flags onto the env vars here. Explicit flags win over a pre-set env var —
 // they are the more specific user intent.
-program.hook("preAction", (thisCommand: Command) => {
-  const globalOptions = thisCommand.opts() as { profile?: string; apiKey?: string };
+// Read the ROOT options, not thisCommand's: with enablePositionalOptions a
+// subcommand-local --api-key (`profile set`) never lands here (it must not
+// leak into the global override), and flags placed before the subcommand are
+// stored at the root.
+program.hook("preAction", () => {
+  const globalOptions = program.opts() as { profile?: string; apiKey?: string };
   if (globalOptions.profile) process.env.SOLTI_PROFILE = globalOptions.profile;
   if (globalOptions.apiKey) process.env.SOLTI_API_KEY = globalOptions.apiKey;
 });
