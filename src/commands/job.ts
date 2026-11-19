@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 import { request } from "../api/client.js";
-import { parseEnvFile, parseResources, parseStringList, parseVolumeShorthand } from "../lib/parse.js";
+import { parseEnvFile, parseResources, parseRunAfter, parseStringList, parseVolumeShorthand } from "../lib/parse.js";
 
 interface Job {
   id: string;
@@ -100,6 +100,7 @@ export async function jobRun(options: {
   name?: string;
   namePrefix?: string;
   maxRetries?: string;
+  runAfter?: string;
   env?: string[];
   envFromFile?: string;
   volume?: string[];
@@ -136,6 +137,10 @@ export async function jobRun(options: {
       name: options.name,
       namePrefix: options.namePrefix,
       maxRetries: options.maxRetries !== undefined ? Number(options.maxRetries) : undefined,
+      // Change 090: validated timezone-aware datetime — the job stays queued
+      // (no VM, zero cost) until the instant passes. Sent verbatim; the API
+      // normalizes aware values to UTC.
+      runAfter: options.runAfter !== undefined ? parseRunAfter(options.runAfter) : undefined,
       env: {
         // --env-from-file provides the base set; explicit --env flags win.
         ...(options.envFromFile !== undefined ? parseEnvFile(readEnvFile(options.envFromFile)) : {}),

@@ -244,6 +244,7 @@ jobCommand
 	.option("--name <name>", "explicit job name")
 	.option("--name-prefix <prefix>", "prefix for auto-generated names")
 	.option("--max-retries <n>", "maximum container retries")
+	.option("--run-after <datetime>", "start the job only after this RFC 3339 datetime (timezone required, e.g. 2026-11-25T02:00:00Z) — it stays queued with no VM until the instant passes")
 	.option("--env <key=value>", "environment variable (repeatable)")
 	.option("--env-from-file <path>", "load KEY=VALUE lines from a .env file (explicit --env flags win)")
 	.option("--volume <spec>", "storage volume mount: <bucket>[/<prefix>]:<mountPath> or bucket=<b>,mountPath=<p>[,connection=...][,prefix=...] (repeatable)")

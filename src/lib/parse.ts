@@ -52,6 +52,55 @@ export interface ParsedResources {
 
 const VRAM_RE = /^\d+(\.\d+)?(Gi|Mi)?$/;
 
+/** Matches an RFC 3339 / ISO 8601 datetime that carries an explicit UTC
+ * offset: `Z`/`z`, `±HH:MM`, `±HHMM`, or `±HH`; `T`/`t`/space separator;
+ * optional fractional seconds. Naive datetimes (no offset) never match —
+ * the API rejects them with 422 (Change 090), so the CLI must too. */
+const RUN_AFTER_RE =
+  /^(\d{4})-(\d{2})-(\d{2})[Tt ](\d{2}):(\d{2}):(\d{2})(\.\d+)?(?:[Zz]|([+-])(\d{2}):?(\d{2})?)$/;
+
+const NAIVE_RUN_AFTER_RE = /^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}:\d{2}(\.\d+)?$/;
+
+/** Validates a `--run-after` value (Change 090): a parseable, timezone-aware
+ * RFC 3339 / ISO 8601 datetime. Garbage and naive datetimes (no offset) throw
+ * with a clear message — no server-local-time guessing. Past instants are
+ * allowed (the API treats them as "start now"). Returns the trimmed value for
+ * the `runAfter` payload field verbatim; the API normalizes it to UTC. */
+export function parseRunAfter(value: string): string {
+  const datetime = value.trim();
+  if (NAIVE_RUN_AFTER_RE.test(datetime)) {
+    throw new Error(
+      `Invalid --run-after '${value}' — naive datetime without a timezone; append an offset (Z or ±HH:MM), e.g. 2026-11-25T02:00:00Z`,
+    );
+  }
+  const match = RUN_AFTER_RE.exec(datetime);
+  if (!match) {
+    throw new Error(
+      `Invalid --run-after '${value}' — expected an RFC 3339 / ISO 8601 datetime with timezone, e.g. 2026-11-25T02:00:00Z or 2026-11-25T11:00:00+09:00`,
+    );
+  }
+  // Round-trip the calendar components through Date.UTC: impossible dates
+  // (2026-02-30) or out-of-range times (25:00) silently roll over in JS, so
+  // a mismatch means the value is not a real datetime. Date.UTC ignores the
+  // offset entirely, so the offset groups are range-checked separately.
+  const [, year, month, day, hour, minute, second, , offsetSign, offsetHours, offsetMinutes] = match;
+  const parsed = new Date(
+    Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)),
+  );
+  if (
+    parsed.getUTCFullYear() !== Number(year) ||
+    parsed.getUTCMonth() !== Number(month) - 1 ||
+    parsed.getUTCDate() !== Number(day) ||
+    parsed.getUTCHours() !== Number(hour) ||
+    parsed.getUTCMinutes() !== Number(minute) ||
+    parsed.getUTCSeconds() !== Number(second) ||
+    (offsetSign !== undefined && (Number(offsetHours) > 23 || Number(offsetMinutes ?? "0") > 59))
+  ) {
+    throw new Error(`Invalid --run-after '${value}' — not a real calendar datetime`);
+  }
+  return datetime;
+}
+
 /** Parses a `--resources` spec, e.g. `cpu=4,memory=16Gi,gpu=24Gi` or
  * `cpu=4,memory=16Gi,gpu.model=A100,gpu.count=2`. Unknown keys, duplicates
  * of the same key, non-numeric cpu/count values, and `gpu.count` without
