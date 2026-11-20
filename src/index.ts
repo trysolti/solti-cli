@@ -10,6 +10,7 @@ import * as organization from "./commands/organization.js";
 import * as profile from "./commands/profile.js";
 import * as project from "./commands/project.js";
 import * as resource from "./commands/resource.js";
+import * as workflow from "./commands/workflow.js";
 
 const program = new Command();
 
@@ -283,6 +284,46 @@ jobCommand
 	.description("Cancel a workload")
 	.action(async (jobIdOrName: string) => {
 		await job.jobCancel(jobIdOrName).catch(fail);
+	});
+
+// --- workflow ---------------------------------------------------------------
+
+const workflowCommand = program
+	.command("workflow")
+	.description("Manage DAG workflows (templates of standard jobs)");
+
+workflowCommand
+	.command("submit <file>")
+	.description("Submit a workflow from a YAML/JSON file (Argo-ish templates payload)")
+	.option("--name <name>", "explicit workflow name (overrides the file)")
+	.option("--name-prefix <prefix>", "prefix for auto-generated names (overrides the file)")
+	.action(async (file: string, options: { name?: string; namePrefix?: string }) => {
+		await workflow.workflowSubmit(file, options).catch(fail);
+	});
+
+workflowCommand
+	.command("get <id_or_name>")
+	.description("Show workflow status and its node jobs")
+	.action(async (idOrName: string) => {
+		await workflow.workflowGet(idOrName).catch(fail);
+	});
+
+workflowCommand
+	.command("list")
+	.description("List recent workflows")
+	.option("--status <status>", "filter by status (running | succeeded | failed | cancelled)")
+	.option("--limit <n>", "maximum number of workflows to return")
+	.option("--offset <n>", "number of workflows to skip")
+	.action(async (options: { status?: string; limit?: string; offset?: string }) => {
+		await workflow.workflowList(options).catch(fail);
+	});
+
+workflowCommand
+	.command("cancel <id_or_name>")
+	.description("Cancel a workflow (cancels all non-terminal node jobs)")
+	.option("--yes", "skip the confirmation prompt")
+	.action(async (idOrName: string, options: { yes?: boolean }) => {
+		await workflow.workflowCancel(idOrName, options).catch(fail);
 	});
 
 // --- cronjob ----------------------------------------------------------------
