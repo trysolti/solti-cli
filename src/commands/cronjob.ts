@@ -34,6 +34,40 @@ export async function cronjobShow(idOrName: string): Promise<void> {
   console.log(`Last run:   ${c.last_triggered_at ?? "Never"}`);
 }
 
+export async function cronjobWorkflows(
+  idOrName: string,
+  options: { status?: string; limit?: string; offset?: string } = {},
+): Promise<void> {
+  // GET /1/cronjobs/{id_or_name}/workflows (change 092; OpenAPI 0.3.2): the
+  // cronjob's workflow-run history — same list envelope as GET /1/workflows
+  // (ListWorkflowsResponse). Query params forwarded verbatim; the API
+  // validates (status enum 422, limit ≤ 200). No trailing slash: this is a
+  // sub-resource route like GET /1/workflows/{id}.
+  const query = new URLSearchParams();
+  if (options.status !== undefined) query.set("status", options.status);
+  if (options.limit !== undefined) query.set("limit", options.limit);
+  if (options.offset !== undefined) query.set("offset", options.offset);
+  const qs = query.toString();
+  const data = (await request(`cronjobs/${idOrName}/workflows${qs ? `?${qs}` : ""}`)) as {
+    workflows: Array<{
+      name: string;
+      status: string;
+      created_at?: string | null;
+      ended_at?: string | null;
+    }>;
+  };
+  if (data.workflows.length === 0) {
+    console.log(`No workflow runs for ${idOrName} yet.`);
+    return;
+  }
+  console.log("NAME | STATUS | CREATED | ENDED");
+  for (const workflow of data.workflows) {
+    console.log(
+      `${workflow.name} | ${workflow.status} | ${workflow.created_at ?? "—"} | ${workflow.ended_at ?? "—"}`,
+    );
+  }
+}
+
 export async function cronjobCreate(options: {
   name: string;
   schedule: string;

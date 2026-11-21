@@ -347,6 +347,16 @@ cronjobCommand
 	});
 
 cronjobCommand
+	.command("workflows <id_or_name>")
+	.description("List the workflow runs spawned by a cronjob")
+	.option("--status <status>", "filter by status (running | succeeded | failed | cancelled)")
+	.option("--limit <n>", "maximum number of workflows to return")
+	.option("--offset <n>", "number of workflows to skip")
+	.action(async (idOrName: string, options: { status?: string; limit?: string; offset?: string }) => {
+		await cronjob.cronjobWorkflows(idOrName, options).catch(fail);
+	});
+
+cronjobCommand
 	.command("create")
 	.description("Create a cronjob (--image form, or --file with a workload YAML/JSON template)")
 	.requiredOption("--name <name>", "cronjob name")
