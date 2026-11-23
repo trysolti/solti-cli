@@ -17,7 +17,7 @@ const program = new Command();
 program
   .name("solti")
   .description("Solti Platform CLI — schedule and run asynchronous workloads without managing infrastructure.")
-  .version("0.2.0")
+  .version("0.2.1")
   .option("--profile <name>", "override the active profile (or set SOLTI_PROFILE)")
   .option("--api-key <key>", "override the API key (or set SOLTI_API_KEY)")
   // Positional options: the root only consumes its options BEFORE the
