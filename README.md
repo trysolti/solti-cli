@@ -73,3 +73,9 @@ rebuild it after a code change:
 pnpm build && pnpm bundle:python
 uv build
 ```
+
+## npm+brew
+
+1. Bump the version (package.json/pyproject.toml) and update the CLI version constant if present.
+2. Commit + tag `vX.Y.Z` and push — the release workflow runs tests, publishes to Releasing, and creates the GitHub Release.
+bun test && pnpm build|The release workflow (tag v*) compiles darwin binaries, publishes to npm, and creates the GitHub Release with brew tarballs; bump the trysolti/homebrew-tap formula (version + URLs + sha256) afterwards. Requires the NPM_TOKEN repo secret.
