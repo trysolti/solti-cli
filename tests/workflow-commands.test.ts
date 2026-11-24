@@ -44,7 +44,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  process.exitCode = undefined;
+  process.exitCode = 0;
 });
 
 // --- temp workflow files -------------------------------------------------------
