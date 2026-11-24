@@ -48,6 +48,9 @@ export interface ParsedResources {
    * VRAM shorthand `gpu=24Gi` → `{vram}`; `gpu.model`/`gpu.count` hard
    * constraints merge into the same object (`count` requires `model`). */
   gpu?: { vram?: string; model?: string; count?: number };
+  /** Boot/root disk override (Change 100): whole GiB integer or Gi/Mi quantity
+   * string, 10–16384 GiB; omitted = per-provider image default. */
+  storage?: number | string;
 }
 
 const VRAM_RE = /^\d+(\.\d+)?(Gi|Mi)?$/;
@@ -101,10 +104,47 @@ export function parseRunAfter(value: string): string {
   return datetime;
 }
 
-/** Parses a `--resources` spec, e.g. `cpu=4,memory=16Gi,gpu=24Gi` or
- * `cpu=4,memory=16Gi,gpu.model=A100,gpu.count=2`. Unknown keys, duplicates
- * of the same key, non-numeric cpu/count values, and `gpu.count` without
- * `gpu.model` throw — nothing is silently dropped. */
+/** Boot-disk override value (Change 100): a bare integer is a whole number of
+ * GiB (sent as a JSON number); a Gi/Mi quantity string (case-insensitive
+ * suffix) passes through verbatim like memory, with the API normalizing the
+ * suffix case. Fractional results (e.g. 10.5Gi, 10241Mi) are rejected — disk
+ * sizes are integral. Bounds 10..16384 GiB are checked client-side for fast
+ * feedback; the API re-validates. */
+const STORAGE_QTY_RE = /^(\d+)(Gi|Mi)?$/i;
+
+function parseStorage(value: string): number | string {
+  const match = STORAGE_QTY_RE.exec(value);
+  if (!match) {
+    throw new Error(
+      `Invalid --resources storage '${value}' — expected a whole GiB integer or a quantity like 100Gi / 102400Mi (10–16384 GiB)`,
+    );
+  }
+  if (match[2] === undefined || match[2].toLowerCase() === "gi") {
+    const gib = Number(match[1]);
+    if (gib < 10 || gib > 16384) {
+      throw new Error(`Invalid --resources storage '${value}' — ${gib} GiB out of bounds (10–16384)`);
+    }
+    // A bare integer is sent as a JSON number; a Gi-suffixed quantity passes
+    // through verbatim like memory (the API normalizes the suffix case).
+    return match[2] === undefined ? gib : value;
+  }
+  const rawMi = Number(match[1]);
+  if (rawMi % 1024 !== 0) {
+    throw new Error(
+      `Invalid --resources storage '${value}' — ${rawMi} Mi is not a whole number of GiB; disk sizes are integral`,
+    );
+  }
+  const gib = rawMi / 1024;
+  if (gib < 10 || gib > 16384) {
+    throw new Error(`Invalid --resources storage '${value}' — ${gib} GiB out of bounds (10–16384)`);
+  }
+  return value;
+}
+
+/** Parses a `--resources` spec, e.g. `cpu=4,memory=16Gi,storage=100Gi,gpu=24Gi`
+ * or `cpu=4,memory=16Gi,gpu.model=A100,gpu.count=2`. Unknown keys, duplicates
+ * of the same key, non-numeric cpu/count values, invalid storage values, and
+ * `gpu.count` without `gpu.model` throw — nothing is silently dropped. */
 export function parseResources(spec: string): ParsedResources {
   const resources: ParsedResources = {};
   const gpu: NonNullable<ParsedResources["gpu"]> = {};
@@ -138,6 +178,9 @@ export function parseResources(spec: string): ParsedResources {
         if (value === "") throw new Error("Invalid --resources memory value — expected e.g. memory=16Gi");
         resources.memory = value;
         break;
+      case "storage":
+        resources.storage = parseStorage(value);
+        break;
       case "gpu":
       case "gpu.vram": {
         if (!VRAM_RE.test(value)) {
@@ -163,7 +206,7 @@ export function parseResources(spec: string): ParsedResources {
       }
       default:
         throw new Error(
-          `Unknown --resources key '${key}' — supported: cpu, memory, gpu=<vram>, gpu.vram, gpu.model, gpu.count`,
+          `Unknown --resources key '${key}' — supported: cpu, memory, storage, gpu=<vram>, gpu.vram, gpu.model, gpu.count`,
         );
     }
   }

@@ -64,6 +64,39 @@ describe("parseResources", () => {
   test("non-numeric cpu throws", () => {
     expect(() => parseResources("cpu=many")).toThrow("cpu");
   });
+
+  test("storage accepts integer GiB and Gi/Mi quantities (Change 100)", () => {
+    expect(parseResources("storage=100")).toEqual({ storage: 100 });
+    expect(parseResources("storage=100Gi")).toEqual({ storage: "100Gi" });
+    expect(parseResources("storage=102400Mi")).toEqual({ storage: "102400Mi" });
+    // Suffix case is insensitive; the API normalizes it (Change 100).
+    expect(parseResources("storage=10gi")).toEqual({ storage: "10gi" });
+    expect(parseResources("storage=10240mi")).toEqual({ storage: "10240mi" });
+  });
+
+  test("storage out of bounds throws (10–16384 GiB)", () => {
+    expect(() => parseResources("storage=9")).toThrow("out of bounds");
+    expect(() => parseResources("storage=0")).toThrow("out of bounds");
+    expect(() => parseResources("storage=16385")).toThrow("out of bounds");
+    expect(() => parseResources("storage=5120Mi")).toThrow("out of bounds");
+  });
+
+  test("storage fractional and malformed values throw", () => {
+    expect(() => parseResources("storage=10.5Gi")).toThrow("Invalid --resources storage");
+    expect(() => parseResources("storage=10241Mi")).toThrow("whole number of GiB");
+    expect(() => parseResources("storage=abc")).toThrow("Invalid --resources storage");
+    expect(() => parseResources("storage=-10")).toThrow("Invalid --resources storage");
+  });
+
+  test("duplicate storage key throws", () => {
+    expect(() => parseResources("storage=10Gi,storage=20Gi")).toThrow("Duplicate");
+  });
+
+  test("unknown-key error lists storage among supported keys", () => {
+    expect(() => parseResources("storage=100,tpu=8")).toThrow(
+      "supported: cpu, memory, storage, gpu=<vram>, gpu.vram, gpu.model, gpu.count",
+    );
+  });
 });
 
 describe("parseVolumeShorthand", () => {

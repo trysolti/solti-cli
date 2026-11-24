@@ -184,6 +184,8 @@ export async function jobRun(options: {
       payload.resources = {
         ...(parsed.cpu !== undefined ? { cpu: parsed.cpu } : {}),
         ...(parsed.memory !== undefined ? { memory: parsed.memory } : {}),
+        // Change 100: boot-disk override (integer GiB or Gi/Mi quantity).
+        ...(parsed.storage !== undefined ? { storage: parsed.storage } : {}),
         ...(parsed.gpu !== undefined ? { gpu: parsed.gpu } : {}),
       };
     }

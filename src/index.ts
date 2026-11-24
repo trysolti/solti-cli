@@ -250,7 +250,7 @@ jobCommand
 	.option("--env-from-file <path>", "load KEY=VALUE lines from a .env file (explicit --env flags win)")
 	.option("--volume <spec>", "storage volume mount: <bucket>[/<prefix>]:<mountPath> or bucket=<b>,mountPath=<p>[,connection=...][,prefix=...] (repeatable)")
 	.option("--volume-name <name>", "explicit volume name (map key) for --volume")
-	.option("--resources <spec>", "e.g. cpu=4,memory=16Gi,gpu=24Gi or gpu.model=A100,gpu.count=2")
+	.option("--resources <spec>", "e.g. cpu=4,memory=16Gi,storage=100Gi,gpu=24Gi or gpu.model=A100,gpu.count=2")
 	.option("--label <key=value>", "label (repeatable)")
 	.option("--tag <tag>", "tag (repeatable)")
 	.option("--cloud <provider>", "cloud constraint (aws | gcp | azure; repeatable or comma-separated)", collectValues, [])
